@@ -8,19 +8,19 @@ Created on Mon Dec 12 16:02:21 2016
 
 import numpy as np
 import scipy as sp
-import scipy.ndimage
-from skimage import io,filters,morphology
-from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
+from skimage import feature, morphology, filters
+from mpl_toolkits.mplot3d import Axes3D
 
 def mask_cleanup(mask_stack,min_obj_size):
     """
     mask_cleanup(im_stack,min_obj_size)
     
-    Uses the following (in order) morphological operations on a stack of binary
-    images to generate a 3D stack of masks:
-        1) Open
-        2) close
+    Uses the following (in order) 2D morphological operations on a stack of
+    binary images to generate a 3D stack of cleaned masks:
+        1) Close holes
+        2) Fill in holes
     
     INPUT
     ---
@@ -36,7 +36,7 @@ def mask_cleanup(mask_stack,min_obj_size):
     """
     
     [Z,Y,X] = mask_stack.shape;
-    mask3D = np.ndarray([Y,X,Z]) # preallocate
+    mask3D = np.ndarray([Z,Y,X]) # preallocate
     
     for z in range(0,Z):
         
@@ -44,13 +44,48 @@ def mask_cleanup(mask_stack,min_obj_size):
         # Close all 'open' objects
         mask_closed = morphology.binary_closing(mask)
         # Fill holes contained topologically inside object
-        mask_closed = scipy.ndimage.binary_fill_holes(mask_closed)
+        mask_closed = sp.ndimage.binary_fill_holes(mask_closed)
 
         # Remove objects that are too small
-        mask3D[:,:,z] = morphology.remove_small_objects(mask_closed,min_obj_size)
+        mask3D[z,:,:] = morphology.remove_small_objects(mask_closed,min_obj_size)
                 
     return mask3D
         
+def find_fg_bg(mask, fg_thresh = .5):
+    """
+    """
+    
+    fg = np.copy(mask)
+    bg = np.copy(fg)
+    unknown = np.copy(fg)
+    
+    # Open small objects
+    opening = morphology.binary_opening(mask)
+
+    # Erode 5 times
+    for i in range(2):
+        opening = morphology.binary_erosion(opening)
+        
+    bg = opening
+    # Dilate 6 times to get BG
+    for i in range(3):
+        bg = morphology.binary_dilation(bg)
+        
+    # BW distance (3D) to get only sure foregrounds
+    D = sp.ndimage.distance_transform_edt(opening)
+    
+#    fg = D > fg_thresh * D.max()
+    ker3D = morphology.ball(25)
+    fg = filters.rank.otsu(mask, ker3D)
+#    fg = feature.peak_local_max(D,footprint=skel3D, indices = False)
+
+    for i in range(5):
+        fg = morphology.binary_dilation(fg)
+
+    unknown = bg.astype(np.int) - fg.astype(np.int)
+    
+    return [D,fg,bg,unknown]
+    
 def region_statistics(labels):
     """
     region_statistics(labels)
@@ -99,7 +134,7 @@ def remove_small_3d(labels,min_size = 500):
     """
     # Generate statistics on detected objects and filter them
     stats = region_statistics(labels)
-    labels2remove = stats[stats['num_pixel'] < min_obj_size_3D]['label']
+    labels2remove = stats[stats['num_pixel'] < min_size]['label']
     
     for l in labels2remove.tolist():
         labels[ labels == l]  = 0
@@ -152,6 +187,14 @@ def get_object_edgelist(labels, l, display=False):
     
     
 def plot_object_surface(X):
+    
+    """
+    plot_object_surface
+    
+    Use delaunay triangulation to plot the surface represented by a coordinate
+    list of 3D points
+    
+    """
         
     if X.size > 0:
         #Center about origin

@@ -6,30 +6,27 @@ Created on Fri Dec  2 13:59:44 2016
 @author: xies@stanford.edu
 """
 
+import skimage
+from skimage import io, filters, morphology
 import cv2
-import numpy as np
-import scipy as sp
-import matplotlib.pyplot as plt
-import scipy.ndimage
-from skimage import io,filters,morphology
-import matplotlib.pyplot as plt
 
 """
 PARAMETERS
 """
 filename = '/Users/mimi/Desktop/test.tif'
 min_obj_size_2D = 20; # min px size for objects in 2D
-min_obj_size_3D = 1000;
+min_obj_size_3D = 500;
 
 
 """
 Image I/O
 """
-im_stack = io.imread(filename)
+
+im_stack = io.imread(filename).astype(np.float)
+im_stack = skimage.util.img_as_float(im_stack)
 [Z,C,Y,X] = im_stack.shape
 rb = im_stack[:,0,:,:]
 dapi = im_stack[:,1,:,:]
-
 
 """
 Preprocessing
@@ -38,16 +35,25 @@ Preprocessing
 global_thresh = filters.threshold_otsu(dapi)
 mask3D = dapi > global_thresh
 
+mask_clean = mask_cleanup(mask3D, min_obj_size_2D) # clean up small obj and fill holes
+[D, sure_fg,sure_bg,unknown] = find_fg_bg(mask_clean) # get bg/fg
+markers = morphology.label(sure_fg)
 
+# Add one to all labels so that sure background is not 0, but 1
+markers = markers + 1
+# Now, mark the region of unknown with zero
+markers[unknown > 0] = 0
 
-mask3D = close_and_remove_small_obj(mask3D, min_obj_size_2D)
-labels = morphology.label(mask3D)
-labels = remove_small_3d(labels,min_obj_size_3D)
+markers = remove_small_3d(markers,min_obj_size_3D)
+
+labels = morphology.watershed( dapi ,markers)
 
 """
 Preview
 """
-obj2display = 4
+
+obj2display = 3
+
 edgelist = get_object_edgelist(labels,obj2display, display = True)
 plot_object_surface(edgelist)
 
