@@ -8,10 +8,11 @@ Created on Fri Dec  2 13:59:44 2016
 
 import skimage
 from skimage import io, filters, morphology
-import cv2
+import matplotlib
 
 """
 PARAMETERS
+
 """
 filename = '/Users/mimi/Desktop/test.tif'
 min_obj_size_2D = 20; # min px size for objects in 2D
@@ -20,6 +21,7 @@ min_obj_size_3D = 500;
 
 """
 Image I/O
+
 """
 
 im_stack = io.imread(filename).astype(np.float)
@@ -30,6 +32,7 @@ dapi = im_stack[:,1,:,:]
 
 """
 Preprocessing
+
 """
 
 global_thresh = filters.threshold_otsu(dapi)
@@ -43,18 +46,23 @@ markers = morphology.label(sure_fg)
 markers = markers + 1
 # Now, mark the region of unknown with zero
 markers[unknown > 0] = 0
+#markers = remove_small_3d(markers,min_obj_size_3D)
 
-markers = remove_small_3d(markers,min_obj_size_3D)
+watershedImg = -filters.gaussian_filter(mask_clean,1)
 
-labels = morphology.watershed( dapi ,markers)
+labels = morphology.watershed( watershedImg, markers)
 
 """
 Preview
+
 """
+
+print "Total # of final labels: %d " % (np.unique(labels).size - 1)
 
 obj2display = 3
 
 edgelist = get_object_edgelist(labels,obj2display, display = True)
 plot_object_surface(edgelist)
 
+io.imsave('labels.tif',np.stack((dapi,markers,labels),axis = 1).transpose((0,2,3,1)).astype(np.int16))
 

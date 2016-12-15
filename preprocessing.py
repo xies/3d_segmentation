@@ -50,8 +50,8 @@ def mask_cleanup(mask_stack,min_obj_size):
         mask3D[z,:,:] = morphology.remove_small_objects(mask_closed,min_obj_size)
                 
     return mask3D
-        
-def find_fg_bg(mask, fg_thresh = .5):
+    
+def find_fg_bg(mask, fg_thresh = .7):
     """
     """
     
@@ -71,14 +71,17 @@ def find_fg_bg(mask, fg_thresh = .5):
     for i in range(3):
         bg = morphology.binary_dilation(bg)
         
-    # BW distance (3D) to get only sure foregrounds
+    # BW distance (3D) to get sure foregrounds
     D = sp.ndimage.distance_transform_edt(opening)
     
 #    fg = D > fg_thresh * D.max()
-    ker3D = morphology.ball(25)
-    fg = filters.rank.otsu(mask, ker3D)
-#    fg = feature.peak_local_max(D,footprint=skel3D, indices = False)
-
+#    ker = np.ones((5,25,25),bool)
+#    fg = feature.peak_local_max(D,
+#                                footprint=ker,
+#                                threshold_rel = fg_thresh,
+#                                indices = False)
+#    fg = filters.rank.otsu(mask, ker3D)
+    
     for i in range(5):
         fg = morphology.binary_dilation(fg)
 
@@ -177,7 +180,7 @@ def get_object_edgelist(labels, l, display=False):
             ZZ = np.append(ZZ,np.ones(X.size) * z)
     
     fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
+    ax = fig.add_subplot(121, projection='3d')
     ax.scatter(XX,YY,ZZ)
     
     plt.show()
@@ -210,9 +213,10 @@ def plot_object_surface(X):
         
         tris = mtri.Triangulation(zen, azi)
         
-        fig = plt.figure()
-        ax  = fig.add_subplot(111, projection='3d')
+        fig = plt.gcf()
+        ax  = fig.add_subplot(122, projection='3d')
         ax.plot_trisurf(X[:,0], X[:,1], X[:,2], triangles=tris.triangles, cmap=plt.cm.bone)
         plt.show()
-            
+
+        
     
