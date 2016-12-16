@@ -53,17 +53,14 @@ markers[unknown > 0] = 0
 watershedImg = -filters.gaussian(mask_clean,1)
 labels = morphology.watershed( watershedImg, markers)
 
+objectIDs = np.setdiff1d( np.unique(labels), [0,1] )
+
 """
 Preview
 
 """
 
-print "Total # of final labels: %d " % (np.unique(labels).size - 1)
-
-# Remember that 1 is background
-obj2display = 21
-edgelist = get_object_edgelist(labels,obj2display, display = True)
-# plot_object_surface(edgelist)
+print "Total # of final labels: %d " % (objectIDs.size)
 
 io.imsave('labels.tif',
           np.stack((dapi,markers,labels),axis = 1).transpose((0,2,3,1)).astype(np.int16))

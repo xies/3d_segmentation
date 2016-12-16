@@ -13,6 +13,7 @@ import matplotlib.tri as mtri
 from skimage import feature, morphology, filters
 from mpl_toolkits.mplot3d import Axes3D
 
+
 def mask_cleanup(mask_stack,min_obj_size):
     """
     mask_cleanup(im_stack,min_obj_size)
