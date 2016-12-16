@@ -74,6 +74,9 @@ def find_fg_bg(mask, fg_thresh = .7):
     # BW distance (3D) to get sure foregrounds
     D = sp.ndimage.distance_transform_edt(opening)
     
+    ker = np.ones((5,15,15),dtype=bool)
+    D_blur = filters.gaussian(D,8)
+    fg = feature.peak_local_max(D_blur,footprint = ker,indices=False)
 #    fg = D > fg_thresh * D.max()
 #    ker = np.ones((5,25,25),bool)
 #    fg = feature.peak_local_max(D,

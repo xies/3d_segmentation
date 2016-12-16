@@ -2,6 +2,8 @@
 """
 Created on Fri Dec  2 13:59:44 2016
 
+# OUTPUT: labels - ndarray of the labelled nuclei
+
 @todo: level set preprocessing, watershed
 @author: xies@stanford.edu
 """
@@ -32,7 +34,7 @@ dapi = im_stack[:,1,:,:]
 
 """
 Preprocessing
-
+`
 """
 
 global_thresh = filters.threshold_otsu(dapi)
@@ -48,8 +50,7 @@ markers = markers + 1
 markers[unknown > 0] = 0
 #markers = remove_small_3d(markers,min_obj_size_3D)
 
-watershedImg = -filters.gaussian_filter(mask_clean,1)
-
+watershedImg = -filters.gaussian(mask_clean,1)
 labels = morphology.watershed( watershedImg, markers)
 
 """
@@ -59,10 +60,11 @@ Preview
 
 print "Total # of final labels: %d " % (np.unique(labels).size - 1)
 
-obj2display = 3
-
+# Remember that 1 is background
+obj2display = 21
 edgelist = get_object_edgelist(labels,obj2display, display = True)
-plot_object_surface(edgelist)
+# plot_object_surface(edgelist)
 
-io.imsave('labels.tif',np.stack((dapi,markers,labels),axis = 1).transpose((0,2,3,1)).astype(np.int16))
+io.imsave('labels.tif',
+          np.stack((dapi,markers,labels),axis = 1).transpose((0,2,3,1)).astype(np.int16))
 
