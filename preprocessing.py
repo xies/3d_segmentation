@@ -13,6 +13,9 @@ import matplotlib.tri as mtri
 from skimage import feature, morphology, filters
 from mpl_toolkits.mplot3d import Axes3D
 
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy.spatial import distance as dist
+import scipy.cluster.hierarchy as hier
 
 def mask_cleanup(mask_stack,min_obj_size):
     """
@@ -102,8 +105,7 @@ def region_statistics(labels):
     
     """
     all_labels = np.unique(labels);
-    # Get rid of 0 as label
-    all_labels = all_labels[all_labels != 0]
+    all_labels = np.setdiff1d(all_labels,[0,1])
     
     # Use NDarray to contain a defined tuple
     stats = np.zeros(len(all_labels) , dtype = [('num_pixel',int),
@@ -113,7 +115,7 @@ def region_statistics(labels):
     idx = 0;
     for l in all_labels:
         # Find statistics
-        num_pixel = np.sum(labels == l)
+        num_pixel = labels[labels == l].size
         num_z_slice = np.sum(np.any(labels ==l,(1,2)))
         
         stats[idx] = (num_pixel,num_z_slice,l)
