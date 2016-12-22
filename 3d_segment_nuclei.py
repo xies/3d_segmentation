@@ -131,27 +131,7 @@ for ax in axes.ravel():
 Orthogonal projection
 """
 
-fig = plt.figure(figsize=(12,12))
-colors = plt.cm.jet(properties.index.astype(np.int32))
-
-# xy projection
-ax_xy = fig.add_subplot(111)
-ax_xy.imshow(dapi.max(axis=0) , cmap='gray')
-ax_xy.scatter(properties['y'],properties['x'], c=colors, alpha=1)
-
-# xz projection
-divider = make_axes_locatable(ax_xy)
-ax_zx = divider.append_axes('top',2, pad=0.2, sharex=ax_xy)
-ax_zx.imshow(dapi.max(axis=1), aspect=um_per_z/um_per_px, cmap='gray')
-ax_zx.scatter(properties['y'],properties['z'], c=colors, alpha=1)
-
-# yz projection
-ax_yz = divider.append_axes('right',2, pad=0.2, sharex=ax_xy)
-ax_yz.imshow(dapi.max(axis=2).T, aspect=um_per_px/um_per_z, cmap='gray')
-ax_yz.scatter(properties['z'],properties['x'], c=colors, alpha=1)
-
-plt.draw()
-
+plot_stack_projections(labels)
 
 """
 Preview
