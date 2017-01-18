@@ -17,6 +17,55 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.spatial import distance as dist
 import scipy.cluster.hierarchy as hier
 
+def blob_log_3d(image, min_sigma=1, max_sigma=50, num_sigma=10, threshold=.2,
+             overlap=.5, log_scale=False):
+    """Finds blobs in the given 3D grayscale image.
+
+    Blobs are found using the Laplacian of Gaussian (LoG) method [1]_.
+    For each blob found, the method returns its coordinates and the standard
+    deviation of the Gaussian kernel that detected the blob.
+
+    """
+    
+    sigma_list = np.linspace(min_sigma, max_sigma, num_sigma)
+
+    # computing gaussian laplace
+    # s**2 provides scale invariance
+    gl_images = [-sp.ndimage.gaussian_laplace(image, s) * s ** 2 for s in sigma_list]
+    image_cube = np.stack(gl_images,axis=3)
+
+    local_maxima = feature.peak_local_max(image_cube, threshold_abs=threshold,
+                                  footprint=np.ones((3, 3, 3, 3)),
+                                  threshold_rel=0.0,
+                                  exclude_border=False)
+
+    # Convert local_maxima to float64
+    lm = local_maxima.astype(np.float64)
+    
+    # Convert the last index to its corresponding scale value
+    lm[:, 3] = sigma_list[local_maxima[:, 3]]
+    local_maxima = lm
+    return local_maxima
+#    return feature.blob._prune_blobs(local_maxima, overlap)
+
+
+def max_scale_lap_of_gauss(im,smin,smax,axial_anisotropy=1):
+    
+    Imax = np.zeros(im.shape).astype(np.float64)
+    scales = np.zeros(im.shape).astype(np.float64)
+    im2 = im.copy() / im.max()
+    
+    smin = int(smin); smax = int(smax)
+    for s in range(smin,smax+1):
+        I = -sp.ndimage.gaussian_laplace(im2,
+                                         np.multiply([axial_anisotropy,1,1],s))
+        ind = np.argmax(np.stack((Imax,I)),axis=0)
+        Imax = np.max(np.stack((Imax,I)),axis=0)
+        
+        scales[ind == 0] = s
+    
+    return (I,scales)
+
 def mask_cleanup(mask_stack,min_obj_size):
     """
     mask_cleanup(im_stack,min_obj_size)
@@ -26,15 +75,15 @@ def mask_cleanup(mask_stack,min_obj_size):
         1) Close holes
         2) Fill in holes
     
-    INPUT
-    ---
+    PARAMETERS
+    ----------
     mask_stack : ndarray
         stack of masks arranged T,C,Y,X as output by skimage.io.imread
     min_obj_size : int
         threshold size below which all 'objects' will be removed
         
-    OUTPUT
-    ---
+    RETURNS
+    -------
     mask3D : ndarray
         stack of boolian cleaned up masks
     """
@@ -45,8 +94,11 @@ def mask_cleanup(mask_stack,min_obj_size):
     for z in range(0,Z):
         
         mask = mask_stack[z,:,:] 
-        # Close all 'open' objects
-        mask_closed = morphology.binary_closing(mask)
+        
+        # Close all 'pepper' objects and objects connected with single bridge
+        mask_closed = mask
+        for i in range(0,3):
+            mask_closed = morphology.binary_closing(mask_closed)
         # Fill holes contained topologically inside object
         mask_closed = sp.ndimage.binary_fill_holes(mask_closed)
 
@@ -83,16 +135,13 @@ def find_fg_bg(mask, fg_thresh = .7):
     fg = feature.peak_local_max(D_blur,footprint = ker,indices=False)
 #    fg = D > fg_thresh * D.max()
 #    ker = np.ones((5,25,25),bool)
-#    fg = feature.peak_local_max(D,
-#                                footprint=ker,
-#                                threshold_rel = fg_thresh,
-#                                indices = False)
 #    fg = filters.rank.otsu(mask, ker3D)
     
-    for i in range(5):
+    for i in range(1):
         fg = morphology.binary_dilation(fg)
 
     unknown = bg.astype(np.int) - fg.astype(np.int)
+    bg = np.invert(bg)
     
     return [D,fg,bg,unknown]
     

@@ -9,44 +9,43 @@ Created on Fri Dec  2 13:59:44 2016
 @author: xies@stanford.edu
 """
 
-from skimage import io, filters, morphology, measure
-import SimpleITK
-import matplotlib
+from skimage import io, filters, morphology, measure, util
+from scipy.ndimage import distance_transform_edt
 import pandas as pd
 
 """
 File
 """
-filename = '/Users/mimi/Desktop/test.tif'
+filename = '/Users/mimi/Desktop/int_org/organoid_1.tif'
 um_per_px = 0.1317882
 um_per_z = 0.5
 
 """
 PARAMETERS
-
 """
 
 smooth_size = 25 # pixels
 min_radius = 20
 max_radius = 100
 
-min_obj_size_2D = 20; # min px size for objects in 2D
-min_obj_size_3D = 500;
+min_obj_size_2D = 500; # min px size for objects in 2D
+min_obj_size_3D = 1000;
 
 """
 Image I/O
-
 """
 
 im_stack = io.imread(filename)
-# im_stack = skimage.util.img_as_float(im_stack)
+
+im_stack = util.img_as_float(im_stack)
 [Z,C,Y,X] = im_stack.shape
 rb = im_stack[:,0,:,:]
 dapi = im_stack[:,1,:,:]
+axial_anisotropy = um_per_px/um_per_z
 
 """
-Preprocessing
-`
+Preprocessing to generate clean 3D mask
+
 """
 
 # Compute global Otsu threshold on the maximum intensity projection
@@ -57,27 +56,44 @@ mask3D = dapi > global_thresh
 # Do preliminary topological cleaning
 mask_clean = mask_cleanup(mask3D, min_obj_size_2D) # clean up small obj and fill holes
 [D, sure_fg,sure_bg,unknown] = find_fg_bg(mask_clean) # get bg/fg
-markers = morphology.label(sure_fg)
 
-# Add one to all labels so that sure background is not 0, but 1
-markers = markers + 1
-# Now, mark the region of unknown with zero
-markers[unknown > 0] = 0
-#markers = remove_small_3d(markers,min_obj_size_3D)
+"""
+Watershed
+1) Get distance transform (Euclidean)
+2) Generate foreground markers (object markers) from the local maxima of dist
+transform; markers no closer than specified threshold (typically 10 px). Dilate
+markers for easy visualization
+4) Mark background as 0
+5) Perform watershed
 
-# Initialize
-watershedImg = -filters.gaussian(mask_clean,1)
+"""
+
+# get Distance transform of cleaned up mask (euclidean)
+distTransform = distance_transform_edt(mask_clean)
+watershedImg = -distTransform / distTransform.max() + 1
+
+## Get local maxima from bwdist image and filter 
+#I = filters.gaussian(distTransform,4)
+#I = feature.peak_local_max(I, min_distance=20,indices=False)
+#for i in range(5):
+#    I = morphology.dilation(I)
+
+markers = measure.label(sure_fg)
+#markers += 1
+#markers[sure_bg] = 0
+
+# Perform watershed
 labels = morphology.watershed( watershedImg, markers)
-
 objectIDs = np.setdiff1d( np.unique(labels), [0,1] )
 
 """
-Get statistics
+Get statistics in 3D
 """
 
-properties = []
+properties = measure.regionprops(labels, dapi) # 3D regionprops (some properties are not supported yet)
 columns = ('x','y','z','I','w')
-indices = []
+
+
 
 for z, frame in enumerate(labels):
     f_prop = measure.regionprops(frame.astype(np.int),
@@ -98,48 +114,18 @@ properties = pd.DataFrame(properties, index=indices, columns=columns)
 properties['I'] /= properties['I'].max()
 
 """
-Plot stats on image
-"""
-
-fig, axes = plt.subplots(nrows,ncols,figsize=(3*ncols,3*nrows))
-ind = 0
-
-for z in range(Z):
-    
-    plane_props = properties[properties['z'] == z]
-    if not plane_props.shape[0]:
-        continue
-    
-    ind += 1
-    i = ind // ncols
-    j = ind % nrows
-    axes[i,j].imshow(labels[z,...], interpolation='nearest',cmap='Dark2')
-    axes[i,j].set_xticks([])
-    axes[i,j].set_yticks([])
-    xlim = axes[i,j].get_xlim()
-    ylim = axes[i,j].get_ylim()
-    
-    axes[i,j].scatter(plane_props['y'],plane_props['x'])
-    axes[i,j].set_xlim(xlim)
-    axes[i,j].set_ylim(ylim)
-    
-for ax in axes.ravel():
-    if not(len(ax.images)):
-        fig.delaxes(ax)
-
-"""
 Orthogonal projection
 """
-
 plot_stack_projections(labels)
 
 """
 Preview
-
+u
 """
 
 print "Total # of final labels: %d " % (objectIDs.size)
 
 io.imsave('labels.tif',
-          np.stack((dapi,markers,labels),axis = 1).transpose((0,2,3,1)).astype(np.int16))
+          np.stack((util.img_as_uint(dapi),markers,labeled),
+                   axis = 1).transpose((0,2,3,1)).astype(np.int16))
 
