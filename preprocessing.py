@@ -71,7 +71,8 @@ def mask_cleanup(mask_stack,min_obj_size):
     mask_cleanup(im_stack,min_obj_size)
     
     Uses the following (in order) 2D morphological operations on a stack of
-    binary images to generate a 3D stack of cleaned masks:
+    binary images to generate a 3D stack of cleaned masks (will also handle 2D
+    images as singletons):
         1) Close holes
         2) Fill in holes
     
@@ -87,13 +88,21 @@ def mask_cleanup(mask_stack,min_obj_size):
     mask3D : ndarray
         stack of boolian cleaned up masks
     """
-    
-    [Z,Y,X] = mask_stack.shape;
+
+    if mask_stack.ndim == 3:
+        [Z,Y,X] = mask_stack.shape
+    elif mask_stack.ndim == 2:
+        Z = 1
+        [Y,X] = mask_stack.shape
+        
     mask3D = np.ndarray([Z,Y,X]) # preallocate
     
     for z in range(0,Z):
         
-        mask = mask_stack[z,:,:] 
+        if mask_stack.ndim == 3:
+            mask = mask_stack[z,...]
+        elif mask_stack.ndim == 2:
+            mask = mask_stack
         
         # Close all 'pepper' objects and objects connected with single bridge
         mask_closed = mask
@@ -105,6 +114,9 @@ def mask_cleanup(mask_stack,min_obj_size):
         # Remove objects that are too small
         mask3D[z,:,:] = morphology.remove_small_objects(mask_closed,min_obj_size)
                 
+    if mask_stack.ndim == 2:
+        mask3D = np.squeeze(mask3D)
+    
     return mask3D
     
 def find_fg_bg(mask, fg_thresh = .7):
