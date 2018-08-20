@@ -98,37 +98,50 @@ for z in range(Z):
 
 # Use measure.regionprops to get statistics on all labelled objects
 labels = labels.astype(np.int)    
-columns = ['Area','Cx','Cy','Z','label','Mean intensity','Euler number','eccentricity']
+columns = ['Area','Cx','Cy','Z','label','Mean intensity','Euler number','eccentricity','stitched_label']
 
 object_properties = []
 for z in range(Z):
     propsz = measure.regionprops(labels[z,...],im[z,...])
     for p in propsz:
         object_properties.append([p.area,p.centroid[0],p.centroid[1], z, p.label,
-                                  p.mean_intensity,p.euler_number, p.eccentricity] )
+                                  p.mean_intensity,p.euler_number, p.eccentricity,p.label] )
 # Convert to dataframes
 props = pd.DataFrame(data=object_properties,columns = columns)
 
 # Go through each slice and group all the objects within 10px of each other's centroid
+props['stiched_label'] = props['label']
+new_labels = labels.copy()
 for z in range(Z-1):
-    
-    thisz = labels[z,...]
-    nextz = labels[z+1,...]
-    
     # Doing this as nested loops for clarity    
     this_props = props[props['Z'] == z]
     next_props = props[props['Z'] == z+1]
     for i in this_props.index:
         thisp = this_props[this_props.index == i]
+        this_mask = labels[z,...] == i+1
+        
         for j in next_props.index:
             nextp = next_props[next_props.index == j]
-            dd = np.sqrt((thisp['Cx'].tolist()[0] - nextp['Cx'].tolist()[0])**2
-                         + (thisp['Cy'].tolist()[0] - nextp['Cy'].tolist()[0])**2)
-            if dd < 50: # within threshold
-                print j, ' >>> ', i
-                labels[labels == j] = i
-        
-io.imsave(path.join(dirname,'2d/stitched_labels.tif'),labels.astype(np.int8))
+            next_mask = labels[z+1,...] == j+1
+            
+            # Look for overlap
+            if ( (next_mask & this_mask).sum().astype(np.float) / this_mask.sum().astype(np.float) > .5 ) or \
+                ( (next_mask & this_mask).sum().astype(np.float) / next_mask.sum().astype(np.float) > .5):
+                
+                dd = np.sqrt((thisp['Cx'].tolist()[0] - nextp['Cx'].tolist()[0])**2
+                             + (thisp['Cy'].tolist()[0] - nextp['Cy'].tolist()[0])**2)
+                if dd < 50: # within centroid threshold
+                    II = np.unique(new_labels[z,this_mask])[0]
+                    print j, ' >>> ', II
+                    new_labels[z+1,next_mask] = II
+                    
+#                    nl = props['stitched_label']
+#                    nl[props.index == j] = II
+#                    props['stitched_label'] = nl
+       
+io.imsave(path.join(dirname,'2d/stitched_labels.tif'),new_labels.astype(np.int8))
+
+# Detect objects that are 
 
 
 
