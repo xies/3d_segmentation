@@ -9,21 +9,20 @@ Created on Fri Dec  2 13:59:44 2016
 @author: xies@stanford.edu
 """
 
+import os
 import numpy as np
 from skimage import io, filters, morphology, measure, util
 from scipy.ndimage import distance_transform_edt
 import pandas as pd
 
 """
-File
+File input
 """
 
-
-
-#filename = '/Users/mimi/Desktop/mIOs/400nM Palblociclib 04-11-2017/400nM Palblociclib/DAPI pRB EdU/3/crop.tif'
-filename = "/Users/mimi/Desktop/mIOs DMSO Pablociclib 10 100 400nM 05-06-2017/TIFF/400nM/mIOs_Pabl_400nM_46hr_10.tif"
-um_per_px = 0.1944334
-um_per_z = 1
+#filename = "/Users/mimi/Box Sync/mIOs/Confocal/12-06-2017 mIO IC+CV Day4/DMSO/DAPI Ki67488 EdU594/1/crop.tif"
+filename = "/Users/mimi/Box Sync/mIOs/Confocal/SP8/02-07-19 Lgr5GFP mCherryNLS Clone 1/cherry_t1.tif"
+um_per_px = 0.0901876
+um_per_z = 1 
 
 """
 PARAMETERS
@@ -43,10 +42,8 @@ Image I/O
 im_stack = io.imread(filename)
 
 #im_stack = util.img_as_float(im_stack)
-[Z,Y,X,C] = im_stack.shape
-rb = im_stack[:,:,:,1]
-dapi = im_stack[:,:,:,0]
-edu = im_stack[:,:,:,2]
+[Z,Y,X] = im_stack.shape
+nuclei = im_stack
 axial_anisotropy = um_per_px/um_per_z
 
 """
@@ -55,17 +52,82 @@ Preprocessing to generate clean 3D mask
 """
 
 # Gaussian filter
-im_stack = filters.gaussian(im_stack,sigma=1)
+#im_stack = filters.gaussian(im_stack,sigma=1)
 
 # Compute global Otsu threshold on the maximum intensity projection
 #total_int = dapi.sum( axis = 0 )
-global_thresh = filters.threshold_otsu(dapi)
-mask3D = dapi > global_thresh
-#mask3D = filters.threshold_adaptive(dapi, 21)
+global_thresh = filters.threshold_otsu(nuclei) * 5
+mask_nuclei = nuclei > global_thresh
+#mask_nuclei = filters.threshold_local(nuclei, 21)
+
+mask_roi = np.zeros(nuclei.shape, dtype = bool)
+#mask_roi[nuclei>filters.threshold_otsu(nuclei)] = True
+mask_roi[nuclei>1000] = True
+roi_ilot = morphology.remove_small_objects(mask_roi, 500000)
+bbox = ndi.find_objects(roi_ilot)
+
+dapi_roi = dapi[bbox[0]];
+#rb_roi = rb[bbox[0]]
+
+# Denoise using chambolle
+dapi_float = util.img_as_float(dapi_roi)
+dapi_float_tvc = restoration.denoise_tv_chambolle(dapi_float, weight = 0.05)
+
+# Find z-stack w/highest variance
+variance = [np.var(image) for _, image in enumerate(mask_dapi)]
+idx = np.argmax(variance)
+dapi_roi_z = dapi_float_tvc[idx-3:idx+3]
+distance_a = ndi.distance_transform_edt(mask_dapi[3])
+
+#Local peak markers
+smooth_distance = filters.gaussian(distance_a, sigma=4)
+local_maxi = feature.peak_local_max(smooth_distance, indices=True, 
+                                    exclude_border=False,footprint=np.ones((15, 15)))
+markers_lm = np.zeros(distance_a.shape, dtype=np.int)
+markers_lm[local_maxi[:,0].astype(np.int), local_maxi[:,1].astype(np.int)] = np.arange(len(local_maxi[:,0])) + 1
+markers_lm = morphology.dilation(markers_lm, morphology.disk(5))
+markers_smooth = np.zeros(dapi_roi_z.shape, dtype = np.int)
+markers_smooth[3] = markers_lm
+markers_smooth = ndi.label(markers_smooth)[0]
+
+#Watershed
+dapi_seg = segmentation.watershed(sobel, markers_3D, compactness = 0.001)
 
 # Do preliminary topological cleaning
 mask_clean = mask_cleanup(mask3D, min_obj_size_2D) # clean up small obj and fill holes
 [D, sure_fg,sure_bg,unknown] = find_fg_bg(mask_clean) # get bg/fg
+
+
+nucleus_mask = np.copy(mask_dapi)
+nucleus_mask[nucleus_mask>0] = 1
+nucleus_mask = nucleus_mask.astype('bool')
+labeled = measure.label(dapi_seg)
+labeled_ext = np.copy(labeled)
+labeled[~nucleus_mask] = 0
+nucleus = measure.label(labeled)
+
+plt.imshow(label2rgb(nucleus[3], bg_label=0))
+
+
+"""
+Load manual seeds
+
+"""
+
+filename = "/Users/mimi/Box Sync/mIOs/Confocal/09-13-2017 mIO IC CHIR VA Day 4 DAPI phosphoRB EdU/500nM_PD/500nM_PD_3/seeds.txt"
+seeds = pd.read_csv(filename,delimiter = '\t')
+
+x_coord = np.round(seeds['X'])
+y_coord = np.round(seeds['Y'])
+z_coord = np.round(seeds['Slice'])
+seed_im = np.zeros((39,209,209))
+for i,x in enumerate(x_coord):
+    y = y_coord[i]
+    z = z_coord[i]
+    seed_im[z,y,x] = 255
+    
+io.imsave( ''.join( (os.path.dirname(filename), '/seeds.tif') ), seed_im.astype(np.int8))
+
 
 """
 Watershed
@@ -105,8 +167,9 @@ Write to TIF file
 
 print "Total # of final labels: %d " % (objectIDs.size)
 
-io.imsave('raw_labels.tif',
-          np.stack((util.img_as_uint(dapi),markers,labels),
+io.imsave(''.join( (os.path.dirname(filename), '/'
+          'raw_labels.tif') ),
+          np.stack((util.img_as_uint(dapi),mask_clean,labels),
                    axis = 1).transpose((0,2,3,1)).astype(np.int16))
 
 """
